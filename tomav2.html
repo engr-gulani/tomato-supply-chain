@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agricultural Loss Calculator</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #27ae60; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; }
+        .results { margin-top: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 4px; display: none; }
+        .chart-container { width: 100%; height: 300px; margin-top: 20px; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Agricultural Produce Loss Calculator</h1>
+    
+    <div class="form-container">
+        <div class="form-group">
+            <label for="produceType">Produce Type:</label>
+            <select id="produceType" required>
+                <option value="">-- Select Type --</option>
+                <option value="UTC">UTC</option>
+                <option value="Sierra">Sierra</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="initialQuantity">Production Quantity (kg):</label>
+            <input type="number" id="initialQuantity" min="1" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="timeDays">Transport Time (days):</label>
+            <input type="number" id="timeDays" min="1" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="temperature">Max Temperature (°C):</label>
+            <input type="number" id="temperature" step="0.1" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="roadEfficiency">Transport Efficiency (%):</label>
+            <input type="number" id="roadEfficiency" min="0" max="100" required>
+        </div>
+        
+        <button onclick="calculateLoss()">Calculate Loss</button>
+    </div>
+    
+    <div id="results" class="results">
+        <h2>Loss Report</h2>
+        <div id="resultContent"></div>
+        <div class="chart-container">
+            <canvas id="lossChart"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let lossChart = null;
+
+        function calculateLoss() {
+            // Clear previous results
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('resultContent').innerHTML = '';
+
+            // Get input values
+            const produceType = document.getElementById('produceType').value;
+            const initial = parseFloat(document.getElementById('initialQuantity').value);
+            const days = parseInt(document.getElementById('timeDays').value);
+            const temp = parseFloat(document.getElementById('temperature').value);
+            const efficiency = parseFloat(document.getElementById('roadEfficiency').value);
+
+            // Validate inputs
+            let errors = [];
+            if (!produceType) errors.push("Select produce type");
+            if (isNaN(initial) || initial <= 0) errors.push("Invalid quantity");
+            if (isNaN(days) || days <= 0) errors.push("Invalid days");
+            if (isNaN(temp)) errors.push("Invalid temperature");
+            if (isNaN(efficiency) || efficiency < 0 || efficiency > 100) errors.push("Invalid efficiency");
+            
+            if (errors.length > 0) {
+                document.getElementById('resultContent').innerHTML = 
+                    errors.map(e => `<p class="error">${e}</p>`).join('');
+                document.getElementById('results').style.display = 'block';
+                return;
+            }
+
+            // Calculate base loss
+            const baseLossPercent = (efficiency >= 80 && temp < 35) ? 1 : 5;
+            const baseLoss = initial * (baseLossPercent / 100);
+
+            // Calculate time loss
+            let timeLossPercent = 0;
+            if (produceType === 'UTC') {
+                if (days < 7) timeLossPercent = 0.5;
+                else {
+                    const periods = Math.floor((days - 7) / 7) + 1;
+                    timeLossPercent = 2 * periods;
+                }
+            } 
+            else if (produceType === 'Sierra') {
+                if (days < 3) timeLossPercent = 0.5;
+                else {
+                    const periods = Math.floor((days - 3) / 3) + 1;
+                    timeLossPercent = 2 * periods;
+                }
+            }
+            const timeLoss = initial * (timeLossPercent / 100);
+
+            // Calculate totals
+            const totalLoss = baseLoss + timeLoss;
+            const remaining = initial - totalLoss;
+            const totalLossPercent = ((totalLoss / initial) * 100).toFixed(2);
+
+            // Display results
+            document.getElementById('resultContent').innerHTML = `
+                <p>Initial Quantity: ${initial.toFixed(2)} kg</p>
+                <p>Base Loss: ${baseLoss.toFixed(2)} kg (${baseLossPercent}%)</p>
+                <p>Time Loss: ${timeLoss.toFixed(2)} kg (${timeLossPercent}%)</p>
+                <p>Total Loss: ${totalLoss.toFixed(2)} kg (${totalLossPercent}%)</p>
+                <p>Remaining Quantity: ${remaining.toFixed(2)} kg</p>
+            `;
+
+            // Update chart
+            updateChart(initial, baseLoss, timeLoss, remaining);
+            document.getElementById('results').style.display = 'block';
+        }
+
+        function updateChart(initial, baseLoss, timeLoss, remaining) {
+            const ctx = document.getElementById('lossChart').getContext('2d');
+            
+            if (lossChart) lossChart.destroy();
+
+            lossChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Initial', 'Base Loss', 'Time Loss', 'Remaining'],
+                    datasets: [{
+                        label: 'Quantity (kg)',
+                        data: [initial, baseLoss, timeLoss, remaining],
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 99, 132, 0.7)',
+                            'rgba(255, 159, 64, 0.7)',
+                            'rgba(75, 192, 192, 0.7)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
